@@ -183,10 +183,13 @@ namespace _101_1
 			viewMatrix = math.inverse(viewMatrix);
 
 			//unity 左右手坐标系相反
-			viewMatrix[0].z = -viewMatrix[0].z;
-			viewMatrix[1].z = -viewMatrix[1].z;
-			viewMatrix[2].z = -viewMatrix[2].z;
-			viewMatrix[3].z = -viewMatrix[3].z;
+			if(SystemInfo.usesReversedZBuffer)
+			{
+				viewMatrix[0].z = -viewMatrix[0].z;
+				viewMatrix[1].z = -viewMatrix[1].z;
+				viewMatrix[2].z = -viewMatrix[2].z;
+				viewMatrix[3].z = -viewMatrix[3].z;
+			}
 
 			return viewMatrix;
 		}
@@ -198,10 +201,15 @@ namespace _101_1
 			viewMatrix = math.inverse(viewMatrix);
 
 			//unity 左右手坐标系相反
-			viewMatrix[0].z = -viewMatrix[0].z;
-			viewMatrix[1].z = -viewMatrix[1].z;
-			viewMatrix[2].z = -viewMatrix[2].z;
-			viewMatrix[3].z = -viewMatrix[3].z;
+			if(SystemInfo.usesReversedZBuffer)
+			{
+				viewMatrix[0].z = -viewMatrix[0].z;
+				viewMatrix[1].z = -viewMatrix[1].z;
+				viewMatrix[2].z = -viewMatrix[2].z;
+				viewMatrix[3].z = -viewMatrix[3].z;
+			}
+			
+
 
 			return viewMatrix;
 		}

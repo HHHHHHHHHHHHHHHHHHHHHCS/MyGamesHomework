@@ -16,5 +16,5 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     const uint index = id.y * _Width + id.x;
 
-    _Result[id.xy] = float4(id.xy / float2(1920, 1080), 0, 1); //_Input[index];
+    _Result[id.xy] = _Input[index];
 }

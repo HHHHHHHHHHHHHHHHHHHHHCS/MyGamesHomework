@@ -57,7 +57,7 @@ namespace Game_101_2
 		private int threadX, threadY;
 		private ComputeBuffer inputCB;
 		private RenderTexture screenRT;
-
+		private CommandBuffer blitCB;
 
 		private void Awake()
 		{
@@ -96,10 +96,9 @@ namespace Game_101_2
 			screenRT = new RenderTexture(width, height, 0, GraphicsFormat.R8G8B8A8_UNorm)
 			{
 				name = "MyScreenRT",
-				enableRandomWrite = true
+				enableRandomWrite = true,
 			};
 			inputCB = new ComputeBuffer(colorRT.Length, sizeof(float));
-			inputCB.SetData(colorRT);
 
 			blitScreenCS.SetInt("_Width", width);
 			blitScreenCS.SetInt("_Height", height);
@@ -110,6 +109,13 @@ namespace Game_101_2
 
 			blitScreenCS.SetBuffer(blitScreenKernel, "_Input", inputCB);
 			blitScreenCS.SetTexture(blitScreenKernel, "_Result", screenRT);
+
+			blitCB = new CommandBuffer()
+			{
+				name = "BlitScreen"
+			};
+			blitCB.Blit(screenRT, BuiltinRenderTextureType.CameraTarget);
+			mainCamera.AddCommandBuffer(CameraEvent.AfterEverything, blitCB);
 		}
 
 		private void OnDestroy()
@@ -125,28 +131,29 @@ namespace Game_101_2
 			calcPosJob.mvps = mvps;
 
 
-			// JobHandle jobHandle = new JobHandle();
-			// jobHandle = clearColorDepthJob.Schedule(pixelsCount, jobHandle);
-			// jobHandle = calcPosJob.Schedule(indexes.Length, jobHandle);
-			// jobHandle = calcAttributeJob.Schedule(indexes.Length, jobHandle);
-			// jobHandle.Complete();
+			JobHandle jobHandle = new JobHandle();
+			jobHandle = clearColorDepthJob.Schedule(pixelsCount, jobHandle);
+			jobHandle = calcPosJob.Schedule(indexes.Length, jobHandle);
+			jobHandle = calcAttributeJob.Schedule(indexes.Length, jobHandle);
+			jobHandle.Complete();
 
+			inputCB.SetData(colorRT);
 
 			blitScreenCS.Dispatch(blitScreenKernel, threadX, threadY, 1);
 		}
 
-		private void Update()
+		/*
+		private void OnPostRender()
 		{
+			//因为这个是 srcalpha  不是 one zero   所以不能用这个
+			// GL.PushMatrix();
+			// // https://answers.unity.com/questions/849712/how-do-i-call-graphicsdrawtexture-correctly.html
+			// // GL.LoadOrtho();
+			// GL.LoadPixelMatrix(0, width, height,0);
+			// Graphics.DrawTexture(new Rect(0, 0, width, height), screenRT);
+			// GL.PopMatrix();
 		}
-
-		private void OnGUI()
-		{
-			Graphics.DrawTexture(new Rect(0, 0, width, height), screenRT);
-				// , new Rect(0, 0, 1f, 1f)
-				// , 0, 0, 0, 0
-				// , null);
-		}
-
+		*/
 
 		private float4x4 GetMVPS()
 		{
@@ -214,7 +221,8 @@ namespace Game_101_2
 		[BurstCompile]
 		private struct CalcAttributeJob : IJobFor
 		{
-			[WriteOnly] public NativeArray<float> colorRT, depthRT;
+			[WriteOnly, NativeDisableParallelForRestrictionAttribute]
+			public NativeArray<float> colorRT, depthRT;
 
 			[ReadOnly] public NativeArray<float4> pixelsPoses;
 
@@ -240,7 +248,15 @@ namespace Game_101_2
 							continue;
 						}
 
-						colorRT[y * width + x] = 1;
+						colorRT[y * width + x] = (index + 1) / 2.0f;
+						depthRT[y * width + x] = (index + 1) / 2.0f;
+						
+						//TODO:
+						//1.判断像素是否在三角形内
+						//2.中心坐标插值
+						//3.MSAA 
+						//   3.5 MSAA 的zbuffer
+						//
 					}
 				}
 			}

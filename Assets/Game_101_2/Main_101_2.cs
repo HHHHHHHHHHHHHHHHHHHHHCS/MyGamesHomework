@@ -30,14 +30,14 @@ namespace Game_101_2
 		};
 
 
-		private static readonly float3[] cols =
+		private static readonly float4[] cols =
 		{
-			new float3(0 / 255f, 238 / 255f, 185 / 255f),
-			new float3(217 / 255f, 0 / 255f, 185 / 255f),
-			new float3(217 / 255f, 238 / 255f, 0 / 255f),
-			new float3(185 / 255f, 217 / 255f, 0 / 255f),
-			new float3(185 / 255f, 0 / 255f, 238 / 255f),
-			new float3(0 / 255f, 217 / 255f, 238 / 255f),
+			new float4(0 / 255f, 238 / 255f, 185 / 255f, 0),
+			new float4(217 / 255f, 0 / 255f, 185 / 255f, 0),
+			new float4(217 / 255f, 238 / 255f, 0 / 255f, 0),
+			new float4(185 / 255f, 217 / 255f, 0 / 255f, 0),
+			new float4(185 / 255f, 0 / 255f, 238 / 255f, 0),
+			new float4(0 / 255f, 217 / 255f, 238 / 255f, 0),
 		};
 
 		public ComputeShader blitScreenCS;
@@ -45,10 +45,10 @@ namespace Game_101_2
 		private Camera mainCamera;
 		private int width, height, pixelsCount;
 
-		private NativeArray<float> colorRT, depthRT;
-		private NativeArray<float4> pixelsPoses;
+		private NativeArray<float4> colorRT;
+		private NativeArray<float> depthRT;
 
-		public Texture tt;
+		private NativeArray<float4> pixelsPoses;
 
 		private ClearColorDepthJob clearColorDepthJob;
 		private CalcPosJob calcPosJob;
@@ -67,7 +67,7 @@ namespace Game_101_2
 
 			pixelsCount = width * height;
 
-			colorRT = new NativeArray<float>(pixelsCount, Allocator.Persistent);
+			colorRT = new NativeArray<float4>(pixelsCount, Allocator.Persistent);
 			depthRT = new NativeArray<float>(pixelsCount, Allocator.Persistent);
 			pixelsPoses = new NativeArray<float4>(indexes.Length * 3, Allocator.Persistent);
 
@@ -77,7 +77,6 @@ namespace Game_101_2
 				depthRT = depthRT,
 			};
 
-
 			calcPosJob = new CalcPosJob()
 			{
 				pixelsPoses = pixelsPoses,
@@ -85,12 +84,12 @@ namespace Game_101_2
 
 			calcAttributeJob = new CalcAttributeJob()
 			{
+				enableMSAA = false,
 				colorRT = colorRT,
 				depthRT = depthRT,
 				pixelsPoses = pixelsPoses,
 				width = width,
 				height = height,
-				pixelsCount = pixelsCount,
 			};
 
 			screenRT = new RenderTexture(width, height, 0, GraphicsFormat.R8G8B8A8_UNorm)
@@ -98,7 +97,7 @@ namespace Game_101_2
 				name = "MyScreenRT",
 				enableRandomWrite = true,
 			};
-			inputCB = new ComputeBuffer(colorRT.Length, sizeof(float));
+			inputCB = new ComputeBuffer(colorRT.Length, 4 * sizeof(float));
 
 			blitScreenCS.SetInt("_Width", width);
 			blitScreenCS.SetInt("_Height", height);
@@ -115,21 +114,13 @@ namespace Game_101_2
 				name = "BlitScreen"
 			};
 			blitCB.Blit(screenRT, BuiltinRenderTextureType.CameraTarget);
-			mainCamera.AddCommandBuffer(CameraEvent.AfterEverything, blitCB);
 		}
 
-		private void OnDestroy()
-		{
-			colorRT.Dispose();
-			depthRT.Dispose();
-			pixelsPoses.Dispose();
-		}
-
+		//要活动的话  改成update
 		private void Start()
 		{
 			float4x4 mvps = GetMVPS();
 			calcPosJob.mvps = mvps;
-
 
 			JobHandle jobHandle = new JobHandle();
 			jobHandle = clearColorDepthJob.Schedule(pixelsCount, jobHandle);
@@ -140,6 +131,23 @@ namespace Game_101_2
 			inputCB.SetData(colorRT);
 
 			blitScreenCS.Dispatch(blitScreenKernel, threadX, threadY, 1);
+		}
+
+		private void OnEnable()
+		{
+			mainCamera.AddCommandBuffer(CameraEvent.AfterEverything, blitCB);
+		}
+
+		private void OnDisable()
+		{
+			mainCamera.RemoveCommandBuffer(CameraEvent.AfterEverything, blitCB);
+		}
+
+		private void OnDestroy()
+		{
+			colorRT.Dispose();
+			depthRT.Dispose();
+			pixelsPoses.Dispose();
 		}
 
 		/*
@@ -173,11 +181,12 @@ namespace Game_101_2
 		[BurstCompile]
 		private struct ClearColorDepthJob : IJobFor
 		{
-			public NativeArray<float> colorRT, depthRT;
+			public NativeArray<float4> colorRT;
+			public NativeArray<float> depthRT;
 
 			public void Execute(int index)
 			{
-				colorRT[index] = 0;
+				colorRT[index] = float4.zero;
 				depthRT[index] = 1;
 			}
 		}
@@ -221,21 +230,38 @@ namespace Game_101_2
 		[BurstCompile]
 		private struct CalcAttributeJob : IJobFor
 		{
+			public bool enableMSAA;
+
 			[WriteOnly, NativeDisableParallelForRestrictionAttribute]
-			public NativeArray<float> colorRT, depthRT;
+			public NativeArray<float4> colorRT;
+
+			[NativeDisableParallelForRestrictionAttribute]
+			public NativeArray<float> depthRT;
 
 			[ReadOnly] public NativeArray<float4> pixelsPoses;
 
-			[ReadOnly] public int width, height, pixelsCount;
+
+			[ReadOnly] public int width, height;
 
 			public void Execute(int index)
 			{
-				float4 p0 = pixelsPoses[3 * index + 0];
-				float4 p1 = pixelsPoses[3 * index + 1];
-				float4 p2 = pixelsPoses[3 * index + 2];
+				float4 pos0 = pixelsPoses[3 * index + 0];
+				float4 pos1 = pixelsPoses[3 * index + 1];
+				float4 pos2 = pixelsPoses[3 * index + 2];
 
-				float2 max = math.max(p2.xy, math.max(p1.xy, p0.xy));
-				float2 min = math.min(p2.xy, math.min(p1.xy, p0.xy));
+
+				float4 col0 = cols[3 * index + 0];
+				float4 col1 = cols[3 * index + 1];
+				float4 col2 = cols[3 * index + 2];
+
+				float2 sp = pos0.xy; //start pos
+
+				float2 max = math.max(pos2.xy, math.max(pos1.xy, sp));
+				float2 min = math.min(pos2.xy, math.min(pos1.xy, sp));
+
+
+				float2 v0 = pos1.xy - sp;
+				float2 v1 = pos2.xy - sp;
 
 
 				for (int x = (int) math.floor(min.x); x < (int) math.ceil(max.x); x++)
@@ -248,15 +274,53 @@ namespace Game_101_2
 							continue;
 						}
 
-						colorRT[y * width + x] = (index + 1) / 2.0f;
-						depthRT[y * width + x] = (index + 1) / 2.0f;
-						
-						//TODO:
-						//1.判断像素是否在三角形内
-						//2.中心坐标插值
-						//3.MSAA 
-						//   3.5 MSAA 的zbuffer
-						//
+						//if(enableMSAA)
+
+						float2 p3 = new float2(x + 0.5f, y + 0.5f);
+
+						float2 v2 = p3 - sp;
+
+						float d00 = math.dot(v0, v0);
+						float d01 = math.dot(v0, v1);
+						float d02 = math.dot(v0, v2);
+						float d11 = math.dot(v1, v1);
+						float d12 = math.dot(v1, v2);
+
+						float invD = 1 / (d00 * d11 - d01 * d01);
+
+						//https://www.cnblogs.com/graphics/archive/2010/08/05/1793393.html
+						float u = (d11 * d02 - d01 * d12) * invD;
+
+						if (u < 0 || u > 1)
+						{
+							continue;
+						}
+
+						float v = (d00 * d12 - d01 * d02) * invD;
+
+						if (v < 0 || v > 1)
+						{
+							continue;
+						}
+
+						float w = 1 - u - v;
+
+						if (w < 0 || w > 1)
+						{
+							continue;
+						}
+
+						int indexPos = y * width + x;
+
+						float depth = depthRT[indexPos];
+
+						float newDepth = (pos0 * w + pos1 * u + pos2 * v).z;
+
+						if (newDepth <= depth)
+						{
+							colorRT[indexPos] = col0 * w + col1 * u + col2 * v;
+							depthRT[indexPos] = newDepth;
+						}
 					}
 				}
 			}

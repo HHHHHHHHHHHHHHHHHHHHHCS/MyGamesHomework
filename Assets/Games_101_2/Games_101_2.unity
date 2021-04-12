@@ -936,6 +936,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   blitScreenCS: {fileID: 7200000, guid: 3dd92d7bb7ce6fd438f9f6b4227682a7, type: 3}
+  enableMSAA: 0
 --- !u!114 &1882613930
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -1,7 +1,7 @@
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace Game_101_0
+namespace Games_101_0
 {
 	public class Main_101_0 : MonoBehaviour
 	{

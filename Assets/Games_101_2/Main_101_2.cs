@@ -1,13 +1,12 @@
-using System;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
-using UnityEngine;
 using Unity.Mathematics;
+using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 
-namespace Game_101_2
+namespace Games_101_2
 {
 	public class Main_101_2 : MonoBehaviour
 	{
@@ -29,7 +28,6 @@ namespace Game_101_2
 			new float3(-1, 0.5f, -5),
 		};
 
-
 		private static readonly float4[] cols =
 		{
 			new float4(0 / 255f, 238 / 255f, 185 / 255f, 0),
@@ -40,7 +38,18 @@ namespace Game_101_2
 			new float4(0 / 255f, 217 / 255f, 238 / 255f, 0),
 		};
 
+		private static readonly float2[] msaaOffset =
+		{
+			new float2(0.25f, 0.5f),
+			new float2(0.5f, 0.25f),
+			new float2(0.5f, 0.75f),
+			new float2(0.75f, 0.5f),
+		};
+
+
 		public ComputeShader blitScreenCS;
+
+		public bool enableMSAA;
 
 		private Camera mainCamera;
 		private int width, height, pixelsCount;
@@ -84,7 +93,7 @@ namespace Game_101_2
 
 			calcAttributeJob = new CalcAttributeJob()
 			{
-				enableMSAA = false,
+				enableMSAA = enableMSAA,
 				colorRT = colorRT,
 				depthRT = depthRT,
 				pixelsPoses = pixelsPoses,
@@ -117,10 +126,12 @@ namespace Game_101_2
 		}
 
 		//要活动的话  改成update
-		private void Start()
+		private void Update()
 		{
 			float4x4 mvps = GetMVPS();
 			calcPosJob.mvps = mvps;
+
+			calcAttributeJob.enableMSAA = enableMSAA;
 
 			JobHandle jobHandle = new JobHandle();
 			jobHandle = clearColorDepthJob.Schedule(pixelsCount, jobHandle);
@@ -145,6 +156,8 @@ namespace Game_101_2
 
 		private void OnDestroy()
 		{
+			inputCB.Dispose();
+
 			colorRT.Dispose();
 			depthRT.Dispose();
 			pixelsPoses.Dispose();
@@ -174,7 +187,7 @@ namespace Game_101_2
 			screenMatrix.c3.x = pixelRect.x + pixelRect.width / 2f;
 			screenMatrix.c1.y = pixelRect.height / 2f;
 			screenMatrix.c3.y = pixelRect.y + pixelRect.height / 2f;
-
+			
 			return math.mul(screenMatrix, math.mul(projectionMatrix, math.mul(viewMatrix, modelMatrix)));
 		}
 
@@ -197,7 +210,7 @@ namespace Game_101_2
 		private struct CalcPosJob : IJobFor
 		{
 			//https://docs.unity3d.com/ScriptReference/Unity.Collections.NativeDisableParallelForRestrictionAttribute.html
-			[WriteOnly, NativeDisableParallelForRestrictionAttribute]
+			[WriteOnly, NativeDisableParallelForRestriction]
 			public NativeArray<float4> pixelsPoses;
 
 			[ReadOnly] public float4x4 mvps;
@@ -221,10 +234,49 @@ namespace Game_101_2
 				p1.xyz = p1.xyz / p1.w;
 				p2.xyz = p2.xyz / p2.w;
 
-				pixelsPoses[3 * index + 0] = p0;
-				pixelsPoses[3 * index + 1] = p1;
-				pixelsPoses[3 * index + 2] = p2;
+				pixelsPoses[i0] = p0;
+				pixelsPoses[i1] = p1;
+				pixelsPoses[i2] = p2;
 			}
+		}
+
+		[BurstCompile]
+		private static bool PointInTriangle(float2 v0, float2 v1, float2 v2, out float3 uvw)
+		{
+			uvw = float3.zero;
+
+			float d00 = math.dot(v0, v0);
+			float d01 = math.dot(v0, v1);
+			float d02 = math.dot(v0, v2);
+			float d11 = math.dot(v1, v1);
+			float d12 = math.dot(v1, v2);
+
+			float invD = 1 / (d00 * d11 - d01 * d01);
+
+			//https://www.cnblogs.com/graphics/archive/2010/08/05/1793393.html
+			float u = (d11 * d02 - d01 * d12) * invD;
+
+			if (u < 0 || u > 1)
+			{
+				return false;
+			}
+
+			float v = (d00 * d12 - d01 * d02) * invD;
+
+			if (v < 0 || v > 1)
+			{
+				return false;
+			}
+
+			float w = 1 - u - v;
+
+			if (w < 0 || w > 1)
+			{
+				return false;
+			}
+
+			uvw = new float3(u, v, w);
+			return true;
 		}
 
 		[BurstCompile]
@@ -232,10 +284,11 @@ namespace Game_101_2
 		{
 			public bool enableMSAA;
 
-			[WriteOnly, NativeDisableParallelForRestrictionAttribute]
+			// [WriteOnly]
+			[NativeDisableParallelForRestriction]
 			public NativeArray<float4> colorRT;
 
-			[NativeDisableParallelForRestrictionAttribute]
+			[NativeDisableParallelForRestriction]
 			public NativeArray<float> depthRT;
 
 			[ReadOnly] public NativeArray<float4> pixelsPoses;
@@ -245,14 +298,17 @@ namespace Game_101_2
 
 			public void Execute(int index)
 			{
-				float4 pos0 = pixelsPoses[3 * index + 0];
-				float4 pos1 = pixelsPoses[3 * index + 1];
-				float4 pos2 = pixelsPoses[3 * index + 2];
+				int i0 = indexes[index].x;
+				int i1 = indexes[index].y;
+				int i2 = indexes[index].z;
+				
+				float4 pos0 = pixelsPoses[i0];
+				float4 pos1 = pixelsPoses[i1];
+				float4 pos2 = pixelsPoses[i2];
 
-
-				float4 col0 = cols[3 * index + 0];
-				float4 col1 = cols[3 * index + 1];
-				float4 col2 = cols[3 * index + 2];
+				float4 col0 = cols[i0];
+				float4 col1 = cols[i1];
+				float4 col2 = cols[i2];
 
 				float2 sp = pos0.xy; //start pos
 
@@ -274,52 +330,64 @@ namespace Game_101_2
 							continue;
 						}
 
-						//if(enableMSAA)
-
-						float2 p3 = new float2(x + 0.5f, y + 0.5f);
-
-						float2 v2 = p3 - sp;
-
-						float d00 = math.dot(v0, v0);
-						float d01 = math.dot(v0, v1);
-						float d02 = math.dot(v0, v2);
-						float d11 = math.dot(v1, v1);
-						float d12 = math.dot(v1, v2);
-
-						float invD = 1 / (d00 * d11 - d01 * d01);
-
-						//https://www.cnblogs.com/graphics/archive/2010/08/05/1793393.html
-						float u = (d11 * d02 - d01 * d12) * invD;
-
-						if (u < 0 || u > 1)
+						if (!enableMSAA)
 						{
-							continue;
+							float2 p3 = new float2(x + 0.5f, y + 0.5f);
+
+							float2 v2 = p3 - sp;
+
+							if (!PointInTriangle(v0, v1, v2, out var uvw))
+							{
+								continue;
+							}
+
+							int indexPos = y * width + x;
+
+							float depth = depthRT[indexPos];
+
+							float newDepth = (pos0 * uvw.z + pos1 * uvw.x + pos2 * uvw.y).z;
+
+							if (newDepth <= depth)
+							{
+								depthRT[indexPos] = newDepth;
+								colorRT[indexPos] = col0 * uvw.z + col1 * uvw.x + col2 * uvw.y;
+							}
 						}
-
-						float v = (d00 * d12 - d01 * d02) * invD;
-
-						if (v < 0 || v > 1)
+						else
 						{
-							continue;
-						}
+							float4 col = float4.zero;
 
-						float w = 1 - u - v;
+							int indexPos = y * width + x;
+							float depth = depthRT[indexPos];
+							float oldDepth = depth;
+							int count = 0;
 
-						if (w < 0 || w > 1)
-						{
-							continue;
-						}
+							for (int i = 0; i < 4; i++)
+							{
+								float2 offset = msaaOffset[i];
+								float2 p3 = new float2(x + offset.x, y + offset.y);
+								float2 v2 = p3 - sp;
+								if (PointInTriangle(v0, v1, v2, out var uvw))
+								{
+									count++;
 
-						int indexPos = y * width + x;
+									float newDepth = (pos0 * uvw.z + pos1 * uvw.x + pos2 * uvw.y).z;
 
-						float depth = depthRT[indexPos];
+									if (newDepth <= depth)
+									{
+										depth = newDepth;
+									}
 
-						float newDepth = (pos0 * w + pos1 * u + pos2 * v).z;
+									col += 0.25f * (col0 * uvw.z + col1 * uvw.x + col2 * uvw.y);
+								}
+							}
 
-						if (newDepth <= depth)
-						{
-							colorRT[indexPos] = col0 * w + col1 * u + col2 * v;
-							depthRT[indexPos] = newDepth;
+							if (count > 0 && depth <= oldDepth)
+							{
+								depthRT[indexPos] = depth;
+								colorRT[indexPos] = 0.25f * (colorRT[indexPos] * (4 - count)
+								                             + col * count);
+							}
 						}
 					}
 				}

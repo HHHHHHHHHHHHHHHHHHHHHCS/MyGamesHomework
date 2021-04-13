@@ -57,11 +57,9 @@ namespace Games_101_2
 		private NativeArray<float4> colorRT;
 		private NativeArray<float> depthRT;
 
-		private NativeArray<float4> pixelsPoses;
 
 		private ClearColorDepthJob clearColorDepthJob;
-		private CalcPosJob calcPosJob;
-		private CalcAttributeJob calcAttributeJob;
+		private CalcColorJob calcColorJob;
 
 		private int threadX, threadY;
 		private ComputeBuffer inputCB;
@@ -78,7 +76,6 @@ namespace Games_101_2
 
 			colorRT = new NativeArray<float4>(pixelsCount, Allocator.Persistent);
 			depthRT = new NativeArray<float>(pixelsCount, Allocator.Persistent);
-			pixelsPoses = new NativeArray<float4>(indexes.Length * 3, Allocator.Persistent);
 
 			clearColorDepthJob = new ClearColorDepthJob()
 			{
@@ -86,17 +83,10 @@ namespace Games_101_2
 				depthRT = depthRT,
 			};
 
-			calcPosJob = new CalcPosJob()
+			calcColorJob = new CalcColorJob()
 			{
-				pixelsPoses = pixelsPoses,
-			};
-
-			calcAttributeJob = new CalcAttributeJob()
-			{
-				enableMSAA = enableMSAA,
 				colorRT = colorRT,
 				depthRT = depthRT,
-				pixelsPoses = pixelsPoses,
 				width = width,
 				height = height,
 			};
@@ -129,14 +119,13 @@ namespace Games_101_2
 		private void Update()
 		{
 			float4x4 mvps = GetMVPS();
-			calcPosJob.mvps = mvps;
+			calcColorJob.mvps = mvps;
 
-			calcAttributeJob.enableMSAA = enableMSAA;
+			calcColorJob.enableMSAA = enableMSAA;
 
 			JobHandle jobHandle = new JobHandle();
 			jobHandle = clearColorDepthJob.Schedule(pixelsCount, jobHandle);
-			jobHandle = calcPosJob.Schedule(indexes.Length, jobHandle);
-			jobHandle = calcAttributeJob.Schedule(indexes.Length, jobHandle);
+			jobHandle = calcColorJob.Schedule(indexes.Length, jobHandle);
 			jobHandle.Complete();
 
 			inputCB.SetData(colorRT);
@@ -160,7 +149,6 @@ namespace Games_101_2
 
 			colorRT.Dispose();
 			depthRT.Dispose();
-			pixelsPoses.Dispose();
 		}
 
 		/*
@@ -187,7 +175,7 @@ namespace Games_101_2
 			screenMatrix.c3.x = pixelRect.x + pixelRect.width / 2f;
 			screenMatrix.c1.y = pixelRect.height / 2f;
 			screenMatrix.c3.y = pixelRect.y + pixelRect.height / 2f;
-			
+
 			return math.mul(screenMatrix, math.mul(projectionMatrix, math.mul(viewMatrix, modelMatrix)));
 		}
 
@@ -201,42 +189,6 @@ namespace Games_101_2
 			{
 				colorRT[index] = float4.zero;
 				depthRT[index] = 1;
-			}
-		}
-
-		//DrawTrianglesJob
-
-		[BurstCompile]
-		private struct CalcPosJob : IJobFor
-		{
-			//https://docs.unity3d.com/ScriptReference/Unity.Collections.NativeDisableParallelForRestrictionAttribute.html
-			[WriteOnly, NativeDisableParallelForRestriction]
-			public NativeArray<float4> pixelsPoses;
-
-			[ReadOnly] public float4x4 mvps;
-
-
-			public void Execute(int index)
-			{
-				int i0 = indexes[index].x;
-				int i1 = indexes[index].y;
-				int i2 = indexes[index].z;
-
-				float4 p0 = new float4(poses[i0], 1.0f);
-				float4 p1 = new float4(poses[i1], 1.0f);
-				float4 p2 = new float4(poses[i2], 1.0f);
-
-				p0 = math.mul(mvps, p0);
-				p1 = math.mul(mvps, p1);
-				p2 = math.mul(mvps, p2);
-
-				p0.xyz = p0.xyz / p0.w;
-				p1.xyz = p1.xyz / p1.w;
-				p2.xyz = p2.xyz / p2.w;
-
-				pixelsPoses[i0] = p0;
-				pixelsPoses[i1] = p1;
-				pixelsPoses[i2] = p2;
 			}
 		}
 
@@ -279,45 +231,55 @@ namespace Games_101_2
 			return true;
 		}
 
+
 		[BurstCompile]
-		private struct CalcAttributeJob : IJobFor
+		private struct CalcColorJob : IJobFor
 		{
 			public bool enableMSAA;
 
+			//https://docs.unity3d.com/ScriptReference/Unity.Collections.NativeDisableParallelForRestrictionAttribute.html
 			// [WriteOnly]
-			[NativeDisableParallelForRestriction]
-			public NativeArray<float4> colorRT;
+			[NativeDisableParallelForRestriction] public NativeArray<float4> colorRT;
 
-			[NativeDisableParallelForRestriction]
-			public NativeArray<float> depthRT;
-
-			[ReadOnly] public NativeArray<float4> pixelsPoses;
-
+			[NativeDisableParallelForRestriction] public NativeArray<float> depthRT;
 
 			[ReadOnly] public int width, height;
+
+			[ReadOnly] public float4x4 mvps;
+
+			
 
 			public void Execute(int index)
 			{
 				int i0 = indexes[index].x;
 				int i1 = indexes[index].y;
 				int i2 = indexes[index].z;
-				
-				float4 pos0 = pixelsPoses[i0];
-				float4 pos1 = pixelsPoses[i1];
-				float4 pos2 = pixelsPoses[i2];
+
+				float4 p0 = new float4(poses[i0], 1.0f);
+				float4 p1 = new float4(poses[i1], 1.0f);
+				float4 p2 = new float4(poses[i2], 1.0f);
+
+				p0 = math.mul(mvps, p0);
+				p1 = math.mul(mvps, p1);
+				p2 = math.mul(mvps, p2);
+
+				p0.xyz = p0.xyz / p0.w;
+				p1.xyz = p1.xyz / p1.w;
+				p2.xyz = p2.xyz / p2.w;
+
 
 				float4 col0 = cols[i0];
 				float4 col1 = cols[i1];
 				float4 col2 = cols[i2];
 
-				float2 sp = pos0.xy; //start pos
+				float2 sp = p0.xy; //start pos
 
-				float2 max = math.max(pos2.xy, math.max(pos1.xy, sp));
-				float2 min = math.min(pos2.xy, math.min(pos1.xy, sp));
+				float2 max = math.max(p2.xy, math.max(p1.xy, sp));
+				float2 min = math.min(p2.xy, math.min(p1.xy, sp));
 
 
-				float2 v0 = pos1.xy - sp;
-				float2 v1 = pos2.xy - sp;
+				float2 v0 = p1.xy - sp;
+				float2 v1 = p2.xy - sp;
 
 
 				for (int x = (int) math.floor(min.x); x < (int) math.ceil(max.x); x++)
@@ -345,7 +307,7 @@ namespace Games_101_2
 
 							float depth = depthRT[indexPos];
 
-							float newDepth = (pos0 * uvw.z + pos1 * uvw.x + pos2 * uvw.y).z;
+							float newDepth = (p0 * uvw.z + p1 * uvw.x + p2 * uvw.y).z;
 
 							if (newDepth <= depth)
 							{
@@ -371,7 +333,7 @@ namespace Games_101_2
 								{
 									count++;
 
-									float newDepth = (pos0 * uvw.z + pos1 * uvw.x + pos2 * uvw.y).z;
+									float newDepth = (p0 * uvw.z + p1 * uvw.x + p2 * uvw.y).z;
 
 									if (newDepth <= depth)
 									{

@@ -10,7 +10,7 @@ Shader "My/S_VertexColor"
 
         Pass
         {
-            CGPROGRAM
+            HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
 
@@ -43,7 +43,7 @@ Shader "My/S_VertexColor"
             {
                 return i.col0;
             }
-            ENDCG
+            ENDHLSL
         }
     }
 }

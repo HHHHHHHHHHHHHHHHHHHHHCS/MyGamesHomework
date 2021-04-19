@@ -57,6 +57,11 @@ Shader "Games/S_101_3"
 
 			TEXTURE2D(_AlbedoTex);
 			SAMPLER(sampler_AlbedoTex);
+			SAMPLER(sampler_clamp_point_AlbedoTex);
+			SAMPLER(sampler_clamp_linear_AlbedoTex);
+			SAMPLER(sampler_clamp_bilinear_AlbedoTex);
+			SAMPLER(sampler_clamp_trilinear_AlbedoTex);
+
 			TEXTURE2D(_NormalTex);
 			SAMPLER(sampler_NormalTex);
 
@@ -97,12 +102,13 @@ Shader "Games/S_101_3"
 			float CalcMipmapLOD(float2 uv, float2 texelSize)
 			{
 				float dx = ddx(uv.x);
-				float dy = ddx(uv.y);
+				float dy = ddy(uv.y);
 
 				float px = texelSize.x * dx;
 				float py = texelSize.y * dy;
-				float lod = 0.5 * log2(max(dot(px, px), dot(py, py)));
-				return lod;
+				float lod = log2(max(dot(px, px), dot(py, py)));
+
+				return max(0, lod);
 			}
 
 			half4 GetColorLinear(float2 uv,TEXTURE2D(_Tex), float2 texelSize)
@@ -115,45 +121,84 @@ Shader "Games/S_101_3"
 
 				float2 p0 = floor(pos);
 				float2 p1 = p0 + signP * offset;
-				float t = dot(signP, absP) / dot(signP, signP);
 
 				half4 c0 = LOAD_TEXTURE2D(_Tex, p0);
 				half4 c1 = LOAD_TEXTURE2D(_Tex, p1);
 
+				float t = 2 * dot(offset, absP) / dot(offset, offset);
 
 				return lerp(c0, c1, t);
 			}
 
-			half4 GetColorBilinear(float2 uv, float2 texelSize)
+			half4 GetColorBilinear(float2 uv,TEXTURE2D(_Tex), float2 texelSize)
 			{
 				float2 pos = uv * texelSize;
-				int2 offset = sign(frac(pos) - 0.5);
-				float2 p0 = ceil(pos);
-				float2 p1 = float2(pos.x + offset.x, 0);
-				float2 p2 = float2(pos.x + offset.x, 0);
-				float2 p3 = ceil(pos);
+				float2 fracP = frac(pos) - 0.5;
+				float2 signP = sign(fracP);
+				float2 absP = abs(fracP);
 
+				float2 p0 = floor(pos);
+				float2 p1 = p0 + float2(signP.x, 0);
+				float2 p2 = p0 + float2(0, signP.y);
+				float2 p3 = p0 + signP.xy;
 
-				// float b0 = LOAD_TEXTURE2D(_AlbedoTex, floorPos);
-				// float b1 = LOAD_TEXTURE2D(_AlbedoTex, float2(ceilPos.x,floorPos.y));
-				//
-				//
-				// float t0 = LOAD_TEXTURE2D(_AlbedoTex, float2(floorPos.x,ceilPos.y));
-				// float t1 = LOAD_TEXTURE2D(_AlbedoTex, ceilPos);
+				half4 c0 = LOAD_TEXTURE2D(_Tex, p0);
+				half4 c1 = LOAD_TEXTURE2D(_Tex, p1);
+				half4 c2 = LOAD_TEXTURE2D(_Tex, p2);
+				half4 c3 = LOAD_TEXTURE2D(_Tex, p3);
 
-				return 0;
+				c0 = lerp(c0, c1, absP.x * 2);
+				c2 = lerp(c2, c3, absP.x * 2);
+				c0 = lerp(c0, c2, absP.y * 2);
+
+				return c0;
 			}
 
-			half4 GetColorTrilinear(float2 uv, float lod)
+			half4 GetColorTrilinear_LOD(float2 uv,TEXTURE2D(_Tex), float2 texelSize, int lod)
 			{
-				return 0;
+				float2 pos = uv * texelSize / pow(2, lod);
+				float2 fracP = frac(pos) - 0.5;
+				float2 signP = sign(fracP);
+				float2 absP = abs(fracP);
+
+				float2 p0 = floor(pos);
+				float2 p1 = p0 + float2(signP.x, 0);
+				float2 p2 = p0 + float2(0, signP.y);
+				float2 p3 = p0 + signP.xy;
+
+				half4 c0 = LOAD_TEXTURE2D_LOD(_Tex, p0, lod);
+				half4 c1 = LOAD_TEXTURE2D_LOD(_Tex, p1, lod);
+				half4 c2 = LOAD_TEXTURE2D_LOD(_Tex, p2, lod);
+				half4 c3 = LOAD_TEXTURE2D_LOD(_Tex, p3, lod);
+
+				c0 = lerp(c0, c1, absP.x * 2);
+				c2 = lerp(c2, c3, absP.x * 2);
+				c0 = lerp(c0, c2, absP.y * 2);
+
+				return c0;
 			}
+
+			half4 GetColorTrilinear(float2 uv,TEXTURE2D(_Tex), float2 texelSize)
+			{
+				float lod = CalcMipmapLOD(uv, texelSize);
+
+				half4 c0 = GetColorTrilinear_LOD(uv, _Tex, texelSize, (int)lod);
+				half4 c1 = GetColorTrilinear_LOD(uv, _Tex, texelSize, max(0, (int)lod - 1));
+
+				return lerp(c0, c1, 1 - frac(lod));
+			}
+
 
 			half4 frag(v2f i) : SV_Target
 			{
+				// return SAMPLE_TEXTURE2D_LOD(_AlbedoTex, sampler_clamp_point_AlbedoTex, i.uv, 0);
+				// return SAMPLE_TEXTURE2D_LOD(_AlbedoTex, sampler_clamp_bilinear_AlbedoTex, i.uv, 0);
+				// return SAMPLE_TEXTURE2D_LOD(_AlbedoTex, sampler_clamp_trilinear_AlbedoTex, i.uv, 0);
 				// return LOAD_TEXTURE2D(_AlbedoTex, i.uv*_AlbedoTex_TexelSize.zw);
-				// return SAMPLE_TEXTURE2D_LOD(_AlbedoTex, sampler_AlbedoTex, i.uv, 0);
-				return GetColorLinear(i.uv, _AlbedoTex, _AlbedoTex_TexelSize.zw);
+				// return GetColorLinear(i.uv, _AlbedoTex, _AlbedoTex_TexelSize.zw);
+				// return GetColorBilinear(i.uv, _AlbedoTex, _AlbedoTex_TexelSize.zw);
+				// return GetColorTrilinear(i.uv, _AlbedoTex, _AlbedoTex_TexelSize.zw);
+
 
 				#if !_USE_DISPLACEMENT_ON
 				float3 wPos = float3(i.TBN0.w, i.TBN1.w, i.TBN2.w);
@@ -169,9 +214,12 @@ Shader "Games/S_101_3"
 
 				//这里只做案例 跟颜色相关   不做normal
 				//SAMPLE_TEXTURE2D   SAMPLE_TEXTURE2D_LOD
-				float lod = CalcMipmapLOD(i.uv, _AlbedoTex_TexelSize.zw);
-				diffuseColor *= SAMPLE_TEXTURE2D_LOD(_AlbedoTex, sampler_AlbedoTex, i.uv, lod).rgb;
 
+				// float lod = CalcMipmapLOD(i.uv, _AlbedoTex_TexelSize.zw);
+				// diffuseColor *= SAMPLE_TEXTURE2D_LOD(_AlbedoTex, sampler_AlbedoTex, i.uv, lod).rgb;
+
+				diffuseColor *= GetColorTrilinear(i.uv, _AlbedoTex, _AlbedoTex_TexelSize.zw).rgb;
+				
 				float3 v = _WorldSpaceCameraPos - wPos;
 				float3 h = normalize(_MainLightPosition.xyz + v);
 				float HoN = PositivePow(dot(h, wNormal), 32);

@@ -1,3 +1,4 @@
+using Common;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -64,7 +65,7 @@ namespace Games_101_2
 		private int threadX, threadY;
 		private ComputeBuffer inputCB;
 		private RenderTexture screenRT;
-		private CommandBuffer blitCB;
+		// private CommandBuffer blitCB;
 
 		private void Awake()
 		{
@@ -100,7 +101,7 @@ namespace Games_101_2
 
 			blitScreenCS.SetInt("_Width", width);
 			blitScreenCS.SetInt("_Height", height);
-			blitScreenCS.SetInt("_PixelsCount", pixelsCount);
+			// blitScreenCS.SetInt("_PixelsCount", pixelsCount);
 
 			threadX = (int) math.ceil(width / 2.0f);
 			threadY = (int) math.ceil(height / 2.0f);
@@ -108,11 +109,13 @@ namespace Games_101_2
 			blitScreenCS.SetBuffer(blitScreenKernel, "_Input", inputCB);
 			blitScreenCS.SetTexture(blitScreenKernel, "_Result", screenRT);
 
-			blitCB = new CommandBuffer()
-			{
-				name = "BlitScreen"
-			};
-			blitCB.Blit(screenRT, BuiltinRenderTextureType.CameraTarget);
+			// blitCB = new CommandBuffer()
+			// {
+			// 	name = "BlitScreen"
+			// };
+			// blitCB.Blit(screenRT, BuiltinRenderTextureType.CameraTarget);
+
+			GetComponent<BlitMonoCtrl>().rt = screenRT;
 		}
 
 		//要活动的话  改成update
@@ -133,15 +136,15 @@ namespace Games_101_2
 			blitScreenCS.Dispatch(blitScreenKernel, threadX, threadY, 1);
 		}
 
-		private void OnEnable()
-		{
-			mainCamera.AddCommandBuffer(CameraEvent.AfterEverything, blitCB);
-		}
-
-		private void OnDisable()
-		{
-			mainCamera.RemoveCommandBuffer(CameraEvent.AfterEverything, blitCB);
-		}
+		// private void OnEnable()
+		// {
+		// 	mainCamera.AddCommandBuffer(CameraEvent.AfterEverything, blitCB);
+		// }
+		//
+		// private void OnDisable()
+		// {
+		// 	mainCamera.RemoveCommandBuffer(CameraEvent.AfterEverything, blitCB);
+		// }
 
 		private void OnDestroy()
 		{

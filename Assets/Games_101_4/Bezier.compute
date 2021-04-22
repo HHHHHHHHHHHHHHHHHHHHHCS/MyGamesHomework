@@ -1,0 +1,16 @@
+#pragma kernel CSMain
+
+RWTexture2D<float4> _ResultTex;
+
+uint _Width, _Height;
+
+[numthreads(8,8,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Width || id.y >= _Height)
+    {
+        return;
+    }
+
+    _ResultTex[id.xy] = 1;//_Input[index];
+}

@@ -1,3 +1,4 @@
+//单纯的偷懒 不用代码写了  直接用shader完成
 Shader "Games/S_101_3"
 {
 	Properties

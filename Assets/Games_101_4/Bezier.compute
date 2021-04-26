@@ -1,16 +1,55 @@
-#pragma kernel CSMain
+#pragma kernel CalcPoints
+#pragma kernel BlitScreen
+
+RWStructuredBuffer<float3> _Points;
+RWStructuredBuffer<float3> _BezierPoints;
+float _TStep, _PointsCount;
+
 
 RWTexture2D<float4> _ResultTex;
-
 uint _Width, _Height;
 
+//阶乘 n>=0   n=0 ->1
+int Factorial(int n)
+{
+    int r = 1;
+    [unroll(20)]
+    for (int i = 1; i <= n; i++)
+    {
+        r *= i;
+    }
+    return r;
+}
+
+[numthreads(1,1,1)]
+void CalcPoints(uint3 id : SV_DispatchThreadID)
+{
+    float3 p = float3(0, 0, 0);
+    int count = _PointsCount - 1;
+    int t = id.x * _TStep;
+    int a = Factorial(count);
+
+    //todo:
+    for (int i = 0; i <= count; i++)
+    {
+        int b = Factorial(i);
+        int c = Factorial(i - count);
+        c = a * rcp(b * c);
+        float d = pow(abs(1 - t), count - i);
+        float e = pow(abs(t), i);
+        e = c * d * e;
+        p += _Points[i] * e;
+    }
+    _BezierPoints[id.x] = p;
+}
+
 [numthreads(8,8,1)]
-void CSMain(uint3 id : SV_DispatchThreadID)
+void BlitScreen(uint3 id : SV_DispatchThreadID)
 {
     if (id.x >= _Width || id.y >= _Height)
     {
         return;
     }
 
-    _ResultTex[id.xy] = 1;//_Input[index];
+    _ResultTex[id.xy] = 1; //_Input[index];
 }

@@ -39,9 +39,11 @@ namespace Games_101_4
 				Graphics.ExecuteCommandBuffer(cmd);
 				Vector3[] ps = new Vector3[tCount];
 				outPoints_cb.GetData(ps);
-				foreach (var item in ps)
+				foreach (var p in ps)
 				{
-					Debug.Log(item);
+					var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+					go.transform.localScale = Vector3.one*0.1f;
+					go.transform.position = p;
 				}
 			}
 		}
@@ -59,7 +61,7 @@ namespace Games_101_4
 
 		private void Update()
 		{
-
+			
 		}
 
 		private void InitCmd()

@@ -1,9 +1,13 @@
 #pragma kernel CalcPoints
 #pragma kernel BlitScreen
 
+#pragma enable_d3d11_debug_symbols
+
+
 RWStructuredBuffer<float3> _Points;
 RWStructuredBuffer<float3> _BezierPoints;
-float _TStep, _PointsCount;
+int _PointsCount;
+float _TStep;
 
 
 RWTexture2D<float4> _ResultTex;
@@ -26,20 +30,24 @@ void CalcPoints(uint3 id : SV_DispatchThreadID)
 {
     float3 p = float3(0, 0, 0);
     int count = _PointsCount - 1;
-    int t = id.x * _TStep;
+    float t = id.x * _TStep;
     int a = Factorial(count);
 
     //todo:
-    for (int i = 0; i <= count; i++)
+    for (int i = 0; i < _PointsCount; i++)
     {
         int b = Factorial(i);
-        int c = Factorial(i - count);
+        int c = Factorial(count - i);
         c = a * rcp(b * c);
-        float d = pow(abs(1 - t), count - i);
-        float e = pow(abs(t), i);
+
+        //compute shader 动态不确定数pow(0,0) 会nan 
+        float d = count == i ? 1 : pow(abs(1.0 - t), count - i);
+        float e = i == 0 ? 1 : pow(abs(t), i);
         e = c * d * e;
+
         p += _Points[i] * e;
     }
+
     _BezierPoints[id.x] = p;
 }
 

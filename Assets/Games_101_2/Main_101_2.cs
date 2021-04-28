@@ -122,6 +122,7 @@ namespace Games_101_2
 		private void Update()
 		{
 			float4x4 mvps = GetMVPS();
+			// Debug.Log(mvps);
 			calcColorJob.mvps = mvps;
 
 			calcColorJob.enableMSAA = enableMSAA;

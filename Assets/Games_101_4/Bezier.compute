@@ -8,10 +8,12 @@ RWStructuredBuffer<float3> _Points;
 RWStructuredBuffer<float3> _BezierPoints;
 int _PointsCount;
 float _TStep;
+float4x4 _VPSMatrix;
 
 
 RWTexture2D<float4> _ResultTex;
 uint _Width, _Height;
+uint _TCount;
 
 //阶乘 n>=0   n=0 ->1
 int Factorial(int n)
@@ -33,7 +35,6 @@ void CalcPoints(uint3 id : SV_DispatchThreadID)
     float t = id.x * _TStep;
     int a = Factorial(count);
 
-    //todo:
     for (int i = 0; i < _PointsCount; i++)
     {
         int b = Factorial(i);
@@ -48,6 +49,7 @@ void CalcPoints(uint3 id : SV_DispatchThreadID)
         p += _Points[i] * e;
     }
 
+    p = mul(_VPSMatrix, float4(p, 1.0));
     _BezierPoints[id.x] = p;
 }
 
@@ -59,5 +61,17 @@ void BlitScreen(uint3 id : SV_DispatchThreadID)
         return;
     }
 
-    _ResultTex[id.xy] = 1; //_Input[index];
+    float4 col = 0;
+
+    //这里可以对点做AABB 提前减少像素的循环次数
+    for (int i = 0; i < _TCount; i++)
+    {
+        float2 offset = _BezierPoints[i].xy - id.xy;
+        if (dot(offset, offset) < 3.0)
+        {
+            col = 1;
+        }
+    }
+
+    _ResultTex[id.xy] = col;
 }

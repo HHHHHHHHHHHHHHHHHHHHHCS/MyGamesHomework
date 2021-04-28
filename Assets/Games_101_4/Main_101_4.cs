@@ -33,7 +33,7 @@ namespace Games_101_4
 		private void OnEnable()
 		{
 			InitCmd();
-			
+
 			if (cmd != null)
 			{
 				Graphics.ExecuteCommandBuffer(cmd);
@@ -42,8 +42,8 @@ namespace Games_101_4
 				foreach (var p in ps)
 				{
 					var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-					go.transform.localScale = Vector3.one*0.1f;
-					go.transform.position = p;
+					go.transform.localScale = Vector3.one * 0.1f;
+					go.transform.position = GetMVPS().inverse * new Vector4(p.x, p.y, p.z, 1.0f);
 				}
 			}
 		}
@@ -59,10 +59,9 @@ namespace Games_101_4
 			outPoints_cb = null;
 		}
 
-		private void Update()
-		{
-			
-		}
+		// private void Update()
+		// {
+		// }
 
 		private void InitCmd()
 		{
@@ -93,15 +92,32 @@ namespace Games_101_4
 			bezierCS.SetBuffer(calcPoints_kernel, "_Points", inputPoints_cb);
 			bezierCS.SetBuffer(calcPoints_kernel, "_BezierPoints", outPoints_cb);
 
+			bezierCS.SetMatrix("_VPSMatrix", GetMVPS());
 
 			int blitScreen_kernel = bezierCS.FindKernel(k_BlitScreen);
 			bezierCS.SetInt(Width_ID, width);
 			bezierCS.SetInt(Height_ID, height);
 			bezierCS.SetTexture(blitScreen_kernel, Result_ID, screenRT);
+			bezierCS.SetBuffer(blitScreen_kernel, "_BezierPoints", outPoints_cb);
+			bezierCS.SetInt("_TCount", tCount);
+
 
 			cmd = new CommandBuffer {name = "Bezier"};
 			cmd.DispatchCompute(bezierCS, calcPoints_kernel, tCount, 1, 1);
-			cmd.DispatchCompute(bezierCS, blitScreen_kernel, Mathf.CeilToInt(width / 8.0f), Mathf.CeilToInt(height / 8.0f), 1);
+			cmd.DispatchCompute(bezierCS, blitScreen_kernel, Mathf.CeilToInt(width / 8.0f),
+				Mathf.CeilToInt(height / 8.0f), 1);
+		}
+
+
+		private Matrix4x4 GetMVPS()
+		{
+			var pixelRect = mainCamera.pixelRect;
+			Matrix4x4 screenMatrix = Matrix4x4.identity;
+			screenMatrix.m00 = pixelRect.width / 2f;
+			screenMatrix.m03 = pixelRect.x + pixelRect.width / 2f;
+			screenMatrix.m11 = pixelRect.height / 2f;
+			screenMatrix.m13 = pixelRect.y + pixelRect.height / 2f;
+			return screenMatrix * (mainCamera.projectionMatrix * mainCamera.worldToCameraMatrix);
 		}
 	}
 }

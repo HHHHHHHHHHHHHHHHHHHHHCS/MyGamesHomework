@@ -49,8 +49,63 @@ void CalcPoints(uint3 id : SV_DispatchThreadID)
         p += _Points[i] * e;
     }
 
-    p = mul(_VPSMatrix, float4(p, 1.0));
-    _BezierPoints[id.x] = p;
+    p = mul(_VPSMatrix, float4(p, 1.0)).xyz;
+    //这里为什么写float3  因为为了方便  把上面的注释了就是world pos 了
+    _BezierPoints[id.x] = p.xyz;
+}
+
+//半径当做 0.5 -> 0.25
+//用距离表示 msaa  1  临近点
+float CheckPointCircle(float2 p0, float2 p1, float2 pixel)
+{
+    float2 minP = min(p0, p1) - 0.5;
+    float2 maxP = max(p0, p1) + 0.5;
+
+    if (pixel.x < minP.x || pixel.x > maxP.x || pixel.y < minP.y || pixel.y > maxP.y)
+    {
+        return 0;
+    }
+    else
+    {
+        float2 v0 = pixel - p0;
+        float2 v1 = p1 - p0;
+
+        float a = dot(v0, v0);
+        float b = dot(v0, v1);
+        float b2 = b * b;
+        float c = dot(v1, v1);
+        b = b2 / c;
+        float d = a - b;
+
+        float col = d <= 0.25;
+        col += d <= 1;
+        return col * 0.5;
+    }
+}
+
+//这里可以分更小的方块做msaa
+bool CheckPointRect(float2 p0, float2 p1, float2 pixel)
+{
+    float2 minP = min(p0, p1) - 0.5;
+    float2 maxP = max(p0, p1) + 0.5;
+
+    if (pixel.x < minP.x || pixel.x > maxP.x || pixel.y < minP.y || pixel.y > maxP.y)
+    {
+        return false;
+    }
+    else
+    {
+        float2 a = pixel - 0.5;
+        float2 b = pixel + 0.5;
+
+        float d = (p1.y - p0.y) / (p1.x - p0.x);
+        float c = p0.y - d * p0.x;
+
+        float ya = d * a.x + c;
+        float yb = d * b.x + c;
+
+        return ((b.y >= ya) && (yb >= a.y)) || ((ya >= a.y) && (b.y >= yb));
+    }
 }
 
 [numthreads(8,8,1)]
@@ -63,14 +118,15 @@ void BlitScreen(uint3 id : SV_DispatchThreadID)
 
     float4 col = 0;
 
+    float2 pixelPoint = id.xy + 0.5;
+
     //这里可以对点做AABB 提前减少像素的循环次数
-    for (int i = 0; i < _TCount; i++)
+    for (uint i = 0; i < _TCount - 1; i++)
     {
-        float2 offset = _BezierPoints[i].xy - id.xy;
-        if (dot(offset, offset) < 3.0)
-        {
-            col = 1;
-        }
+        float2 p0 = _BezierPoints[i].xy;
+        float2 p1 = _BezierPoints[i + 1].xy;
+
+        col += CheckPointCircle(p0, p1, pixelPoint);
     }
 
     _ResultTex[id.xy] = col;

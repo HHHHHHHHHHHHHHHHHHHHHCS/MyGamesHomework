@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Games_103_1
 {
-	public class Rigid_Bunny : MonoBehaviour
+	public class RigidBunny : MonoBehaviour
 	{
 		private readonly Vector3 G = new Vector3(0.0f, -9.8f, 0.0f);
 
@@ -60,6 +60,7 @@ namespace Games_103_1
 			if (Input.GetKey(KeyCode.R))
 			{
 				transform.position = resetPos;
+				transform.rotation = resetQua;
 				restitution = 0.5f;
 				launched = false;
 			}
@@ -90,7 +91,7 @@ namespace Games_103_1
 
 			//2. collision impulse
 			Collision_Impulse(new Vector3(0, 0, 0), new Vector3(0, 1, 0));
-			Collision_Impulse(new Vector3(0, 4, 5), new Vector3(0, 0, 1));
+			Collision_Impulse(new Vector3(0, 4, -5), new Vector3(0, 0, 1));
 
 
 			//3. update position & orientation
@@ -118,8 +119,58 @@ namespace Games_103_1
 		{
 			int[] vid_collision = new int[vertices.Length];
 			int num_collision = 0;
-			
-			
+
+			Matrix4x4 R = Matrix4x4.Rotate(transform.rotation);
+			for (int i = 0; i < vertices.Length; i++)
+			{
+				Vector3 xi = transform.position + R.MultiplyVector(vertices[i]);
+				if (Vector3.Dot(xi - pos, normal) < 0)
+				{
+					vid_collision[num_collision] = i;
+					num_collision++;
+				}
+			}
+
+			if (num_collision == 0)
+			{
+				return;
+			}
+
+			Vector3 ri = new Vector3(0, 0, 0);
+			for (int i = 0; i < num_collision; i++)
+			{
+				ri += vertices[vid_collision[i]];
+			}
+
+			ri = ri / num_collision;
+			Vector3 Rri = R.MultiplyVector(ri);
+			Vector3 Vi = v + Vector3.Cross(w, Rri);
+
+			//it maybe in the state of rebound??
+			if (Vector3.Dot(Vi, normal) > 0)
+			{
+				return;
+			}
+
+			//calc compute the wanted v_i^new
+			Vector3 VN = Vector3.Dot(Vi, normal) * normal;
+			Vector3 VT = Vi - VN;
+			// We can decrease the restitution 𝜇_𝐍 to reduce oscillation
+			restitution = Mathf.Max(restitution - 0.0005f, 0);
+			float a = Mathf.Max(0, 1.0f - mu_T * (1.0f + restitution)) * Vector3.Magnitude(VN) / Vector3.Magnitude(VT);
+			Vector3 viNew = -1.0f * restitution * VN + a * VT;
+			//compute the impulse j
+			Matrix4x4 I_rot = R * I_ref * Matrix4x4.Transpose(R);
+			Matrix4x4 I_inverse = I_rot.inverse;
+
+			Matrix4x4 Rri_star = GetCrossMatrix(Rri);
+			Matrix4x4 K = MinusTwoMatrix(MultiplyScalar(Matrix4x4.identity, 1.0f / mass)
+				, Rri_star * I_inverse * Rri_star);
+			Vector3 J = K.inverse.MultiplyVector(viNew - Vi);
+
+			// update v and w
+			v = v + 1 / mass * J;
+			w = w + I_inverse.MultiplyVector(Vector3.Cross(Rri, J));
 		}
 
 		#region HelpFunc

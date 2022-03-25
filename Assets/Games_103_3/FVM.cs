@@ -6,6 +6,8 @@ namespace Games_103_3
 {
 	public class FVM : MonoBehaviour
 	{
+		public bool isSVD = false;
+
 		public TextAsset eleText;
 		public TextAsset nodeText;
 
@@ -27,9 +29,13 @@ namespace Games_103_3
 		private Vector3[] V_sum;
 		private Matrix4x4[] inv_Dm;
 
+		private SVD svd;
+
 
 		private void Start()
 		{
+			svd = new SVD();
+
 			// FILO IO: Read the house model from files.
 			// The model is from Jonathan Schewchuk's Stellar lib.
 			{
@@ -138,6 +144,7 @@ namespace Games_103_3
 
 		private void FixedUpdate()
 		{
+			//如果dt过大会乱飞, 所以基本一帧数分多次simulate
 			for (int l = 0; l < 10; l++)
 			{
 				UpdateVert(Time.fixedDeltaTime * 0.1f);
@@ -240,9 +247,10 @@ namespace Games_103_3
 				Matrix4x4 P = Matrix4x4.zero;
 				Matrix4x4 result;
 
-				if (false)
+
+				if (isSVD)
 				{
-					// svd.svd(F, ref U, ref D, ref V);
+					svd.DoSVD(F, ref U, ref D, ref V);
 					float I = D[0, 0] * D[0, 0] + D[1, 1] * D[1, 1] + D[2, 2] * D[2, 2];
 					float J = D[0, 0] * D[1, 1] * D[2, 2];
 					float II = D[0, 0] * D[0, 0] * D[0, 0] * D[0, 0] + D[1, 1] * D[1, 1] * D[1, 1] * D[1, 1] +
@@ -258,8 +266,7 @@ namespace Games_103_3
 
 					result = U * P * V.transpose * inv_Dm[tet].transpose;
 				}
-
-
+				else
 				{
 					Matrix4x4 G = F.transpose * F;
 					G[0, 0] -= 1;
